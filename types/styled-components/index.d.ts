@@ -59,7 +59,7 @@ type ReactDefaultizedProps<C, P> = C extends { defaultProps: infer D } ? Default
 
 export type StyledComponentProps<
     // The Component from whose props are derived
-    C extends string | React.ComponentType<any>,
+    C extends IntrinsicElementsKeys | React.ComponentType<any>,
     // The Theme from the current context
     T extends object,
     // The other props added by the template
@@ -68,31 +68,21 @@ export type StyledComponentProps<
     A extends keyof any
 > =
     // Distribute O if O is a union type
-    O extends object
-        ? WithOptionalTheme<
-              Omit<
-                  ReactDefaultizedProps<
-                      C,
-                      React.ComponentPropsWithRef<
-                          C extends IntrinsicElementsKeys | React.ComponentType<any> ? C : never
-                      >
-                  > &
-                      O,
-                  A
-              > &
-                  Partial<
-                      Pick<
-                          React.ComponentPropsWithRef<
-                              C extends IntrinsicElementsKeys | React.ComponentType<any> ? C : never
-                          > &
-                              O,
-                          A
-                      >
-                  >,
-              T
-          > &
-              WithChildrenIfReactComponentClass<C>
-        : never;
+    WithOptionalTheme<
+        ReactDefaultizedProps<
+            C,
+            React.ComponentPropsWithRef<C>
+        > &
+        O &
+        Partial<
+            Pick<
+                React.ComponentPropsWithRef<C> &
+                O,
+                A
+            >
+        >,
+        T
+    > & WithChildrenIfReactComponentClass<C>
 
 // Because of React typing quirks, when getting props from a React.ComponentClass,
 // we need to manually add a `children` field.
@@ -103,14 +93,6 @@ type WithChildrenIfReactComponentClass<C extends string | React.ComponentType<an
 >
     ? { children?: React.ReactNode }
     : {};
-
-type StyledComponentPropsWithAs<
-    C extends string | React.ComponentType<any>,
-    T extends object,
-    O extends object,
-    A extends keyof any,
-    F extends string | React.ComponentType<any> = C
-> = StyledComponentProps<C, T, O, A> & { as?: C; forwardedAs?: F };
 
 export type FalseyValue = undefined | null | false;
 export type Interpolation<P> = InterpolationValue | InterpolationFunction<P> | FlattenInterpolation<P>;
@@ -155,26 +137,26 @@ export type StyledComponent<
     C extends keyof JSX.IntrinsicElements | React.ComponentType<any>,
     T extends object,
     O extends object = {},
-    A extends keyof any = never
+    A extends keyof any = never,
+    Props = StyledComponentProps<C, T, O, A>
 > = // the "string" allows this to be used as an object key
     // I really want to avoid this if possible but it's the only way to use nesting with object styles...
     string &
-        StyledComponentBase<C, T, O, A> &
+        StyledComponentBase<C, T, O, A, Props> &
         hoistNonReactStatics.NonReactStatics<C extends React.ComponentType<any> ? C : never>;
 
 export interface StyledComponentBase<
-    C extends string | React.ComponentType<any>,
+    C extends IntrinsicElementsKeys | React.ComponentType<any>,
     T extends object,
     O extends object = {},
-    A extends keyof any = never
-> extends ForwardRefExoticBase<StyledComponentProps<C, T, O, A>> {
+    A extends keyof any = never,
+    Props = StyledComponentProps<C, T, O, A>
+    > extends ForwardRefExoticBase<Props> {
     // add our own fake call signature to implement the polymorphic 'as' prop
-    (props: StyledComponentProps<C, T, O, A> & { as?: never; forwardedAs?: never }): React.ReactElement<
-        StyledComponentProps<C, T, O, A>
-    >;
-    <AsC extends string | React.ComponentType<any> = C, FAsC extends string | React.ComponentType<any> = AsC>(
-        props: StyledComponentPropsWithAs<AsC, T, O, A, FAsC>,
-    ): React.ReactElement<StyledComponentPropsWithAs<AsC, T, O, A, FAsC>>;
+    (props: Props): React.ReactElement<Props>;
+    <AsC extends IntrinsicElementsKeys | React.ComponentType<any> = C, FAsC extends IntrinsicElementsKeys | React.ComponentType<any> = AsC>(
+        props: Props & { as?: AsC; forwardedAs?: FAsC; },
+    ): React.ReactElement<Props & { as?: AsC; forwardedAs?: FAsC; }>;
 
     withComponent<WithC extends AnyStyledComponent>(
         component: WithC,
@@ -253,11 +235,13 @@ export type StyledComponentInnerComponent<C extends React.ComponentType<any>> = 
     : C extends StyledComponent<infer I, any, any>
     ? I
     : C;
+
 export type StyledComponentPropsWithRef<
     C extends keyof JSX.IntrinsicElements | React.ComponentType<any>
 > = C extends AnyStyledComponent
     ? React.ComponentPropsWithRef<StyledComponentInnerComponent<C>>
     : React.ComponentPropsWithRef<C>;
+
 export type StyledComponentInnerOtherProps<C extends AnyStyledComponent> = C extends StyledComponent<
     any,
     any,
@@ -268,6 +252,7 @@ export type StyledComponentInnerOtherProps<C extends AnyStyledComponent> = C ext
     : C extends StyledComponent<any, any, infer O>
     ? O
     : never;
+
 export type StyledComponentInnerAttrs<C extends AnyStyledComponent> = C extends StyledComponent<any, any, any, infer A>
     ? A
     : never;
@@ -304,8 +289,7 @@ export interface BaseThemedCssFunction<T extends object> {
 export type ThemedCssFunction<T extends object> = BaseThemedCssFunction<AnyIfEmpty<T>>;
 
 // Helper type operators
-type Omit<T, K extends keyof T> = Pick<T, Exclude<keyof T, K>>;
-type WithOptionalTheme<P extends { theme?: T }, T> = Omit<P, 'theme'> & {
+type WithOptionalTheme<P extends { theme?: T; }, T> = P & {
     theme?: T;
 };
 type AnyIfEmpty<T extends object> = keyof T extends never ? any : T;
